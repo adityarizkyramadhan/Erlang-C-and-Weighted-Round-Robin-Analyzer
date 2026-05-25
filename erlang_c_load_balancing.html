@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Erlang C & WRR Analyzer — SRE Toolkit</title>
+<style>
+  :root {
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f5f4f0;
+    --color-background-tertiary: #eeede8;
+    --color-text-primary: #1a1a18;
+    --color-text-secondary: #5f5e5a;
+    --color-text-tertiary: #8c8b85;
+    --color-border-tertiary: rgba(0,0,0,0.1);
+    --color-border-secondary: rgba(0,0,0,0.18);
+    --color-border-primary: rgba(0,0,0,0.28);
+    --color-text-success: #0f6e56; --color-background-success: #e1f5ee;
+    --color-text-warning: #854f0b; --color-background-warning: #faeeda;
+    --color-text-danger: #a32d2d;  --color-background-danger: #fcebeb;
+    --color-text-info: #185fa5;    --color-background-info: #e6f1fb;
+    --border-radius-md: 8px; --border-radius-lg: 12px;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-background-primary: #1e1e1c;
+      --color-background-secondary: #2a2a27;
+      --color-background-tertiary: #242422;
+      --color-text-primary: #e8e6de;
+      --color-text-secondary: #a0a098;
+      --color-text-tertiary: #6e6d67;
+      --color-border-tertiary: rgba(255,255,255,0.09);
+      --color-border-secondary: rgba(255,255,255,0.18);
+      --color-border-primary: rgba(255,255,255,0.28);
+      --color-text-success: #5dcaa5; --color-background-success: #04342c;
+      --color-text-warning: #ef9f27; --color-background-warning: #412402;
+      --color-text-danger: #f09595;  --color-background-danger: #501313;
+      --color-text-info: #85b7eb;    --color-background-info: #042c53;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-background-tertiary);
+    color: var(--color-text-primary);
+    min-height: 100vh;
+    padding: 2rem;
+  }
+  .app-wrapper {
+    max-width: 860px;
+    margin: 0 auto;
+    background: var(--color-background-primary);
+    border-radius: var(--border-radius-lg);
+    border: 0.5px solid var(--color-border-tertiary);
+    padding: 2rem;
+  }
+  .app-header { margin-bottom: 1.5rem; border-bottom: 0.5px solid var(--color-border-tertiary); padding-bottom: 1rem; }
+  .app-header h1 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
+  .app-header p { font-size: 13px; color: var(--color-text-secondary); }
+  .tabs { display:flex; gap:8px; margin-bottom:1.5rem; flex-wrap:wrap; }
+  .tab { padding:6px 16px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); font-size:13px; cursor:pointer; background:transparent; color:var(--color-text-secondary); font-family:var(--font-sans); }
+  .tab.active { background:var(--color-background-secondary); color:var(--color-text-primary); border-color:var(--color-border-primary); }
+  .tab:hover:not(.active) { background:var(--color-background-secondary); }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  @media(max-width:600px) { .grid4,.grid3 { grid-template-columns:1fr 1fr; } }
+  @media(max-width:400px) { .grid4,.grid3 { grid-template-columns:1fr; } }
+  .metric { background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:12px 14px; }
+  .metric .lbl { font-size:12px; color:var(--color-text-secondary); margin-bottom:4px; }
+  .metric .val { font-size:22px; font-weight:500; }
+  .metric .sub { font-size:11px; color:var(--color-text-tertiary); margin-top:2px; }
+  .warn { color:var(--color-text-warning); }
+  .danger { color:var(--color-text-danger); }
+  .ok { color:var(--color-text-success); }
+  .section { border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:1rem 1.25rem; margin-bottom:1rem; }
+  .section h3 { font-size:14px; font-weight:500; margin:0 0 12px; }
+  .row { display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:13px; }
+  .row label { color:var(--color-text-secondary); min-width:220px; }
+  .row span.out { font-weight:500; min-width:48px; text-align:right; }
+  .chart-wrap { position:relative; width:100%; height:240px; margin-top:12px; }
+  .chart-wrap2 { position:relative; width:100%; height:200px; margin-top:8px; }
+  .tbl { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+  .tbl th { text-align:left; padding:6px 8px; color:var(--color-text-secondary); font-weight:400; border-bottom:0.5px solid var(--color-border-tertiary); }
+  .tbl td { padding:6px 8px; border-bottom:0.5px solid var(--color-border-tertiary); }
+  .badge { display:inline-block; font-size:11px; padding:2px 8px; border-radius:var(--border-radius-md); }
+  .badge-ok { background:var(--color-background-success); color:var(--color-text-success); }
+  .badge-warn { background:var(--color-background-warning); color:var(--color-text-warning); }
+  .badge-danger { background:var(--color-background-danger); color:var(--color-text-danger); }
+  .node-row { display:flex; align-items:center; gap:8px; padding:8px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); margin-bottom:6px; }
+  .node-row .nname { font-size:13px; font-weight:500; min-width:70px; }
+  .node-row .bar-wrap { flex:1; height:8px; background:var(--color-background-secondary); border-radius:4px; overflow:hidden; }
+  .node-row .bar { height:100%; border-radius:4px; transition:width .3s; }
+  .node-row .nval { font-size:12px; color:var(--color-text-secondary); min-width:100px; text-align:right; }
+  input[type=range] { flex:1; cursor:pointer; accent-color:var(--color-text-info); }
+  input[type=number], input[type=text] {
+    font-size:12px; border:0.5px solid var(--color-border-tertiary);
+    border-radius:4px; padding:2px 6px; background:transparent;
+    color:var(--color-text-primary); font-family:var(--font-sans);
+  }
+  button {
+    font-size:12px; padding:5px 14px; border:0.5px solid var(--color-border-secondary);
+    border-radius:var(--border-radius-md); background:transparent;
+    color:var(--color-text-primary); cursor:pointer; font-family:var(--font-sans);
+  }
+  button:hover { background:var(--color-background-secondary); }
+  .legend { display:flex; gap:16px; margin-top:8px; font-size:12px; color:var(--color-text-secondary); flex-wrap:wrap; }
+  .legend span { display:flex; align-items:center; gap:4px; }
+  .legend-dot { width:10px; height:10px; border-radius:2px; display:inline-block; }
+  .formula-box { background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:12px 16px; font-family:monospace; font-size:13px; margin-bottom:1rem; line-height:1.8; }
+  .formula-box .comment { color:var(--color-text-tertiary); font-size:11px; }
+</style>
+</head>
+<body>
+<div class="app-wrapper">
+  <div class="app-header">
+    <h1>Erlang C &amp; Weighted Round Robin Analyzer</h1>
+    <p>Advanced queueing theory toolkit — SRE capacity planning &amp; load balancing</p>
+  </div>
+
+  <div class="formula-box">
+    <div class="comment"># Erlang C formula — P(request harus menunggu di antrean)</div>
+    C(c, A) = [A^c / c! × c/(c-A)] / [Σ(k=0..c-1) A^k/k! + A^c/c! × c/(c-A)]<br>
+    <div class="comment"># WRR weight — α = bobot CPU, β = 1-α = bobot RAM</div>
+    W(i) = [α×(CPU_i/max_CPU) + β×(RAM_i/max_RAM)] / Σ_j [...]
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('erlang')">Erlang C Calculator</button>
+    <button class="tab" onclick="switchTab('p99')">Analisis p99 Latency</button>
+    <button class="tab" onclick="switchTab('wrr')">Weighted Round Robin</button>
+  </div>
+
+  <!-- TAB ERLANG C -->
+  <div id="tab-erlang" class="panel active">
+    <div class="section">
+      <h3>Parameter sistem</h3>
+      <div class="row"><label>Arrival rate λ (req/detik)</label><input type="range" min="1" max="200" value="80" id="lambda" oninput="calcErlang()"><span class="out" id="lambda-out">80</span></div>
+      <div class="row"><label>Service rate μ (req/detik per worker)</label><input type="range" min="1" max="50" value="10" id="mu" oninput="calcErlang()"><span class="out" id="mu-out">10</span></div>
+      <div class="row"><label>Jumlah worker threads (c)</label><input type="range" min="1" max="32" value="10" id="workers" oninput="calcErlang()"><span class="out" id="workers-out">10</span></div>
+    </div>
+    <div class="grid4" id="erlang-metrics" style="margin-bottom:1rem"></div>
+    <div class="section">
+      <h3>Kurva utilisasi vs P(wait) — Erlang C</h3>
+      <div class="chart-wrap"><canvas id="erlangChart" role="img" aria-label="Kurva Erlang C: probabilitas antrean vs utilisasi thread pool">Grafik Erlang C.</canvas></div>
+      <div class="legend">
+        <span><span class="legend-dot" style="background:#E24B4A"></span>P(wait) %</span>
+        <span><span class="legend-dot" style="background:#378ADD"></span>Avg wait (ms)</span>
+        <span style="color:var(--color-text-warning)">— garis kuning = batas 85%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB P99 -->
+  <div id="tab-p99" class="panel">
+    <div class="section">
+      <h3>Simulasi p99 latency vs utilisasi thread pool</h3>
+      <div class="row"><label>Base service time (ms)</label><input type="range" min="10" max="500" value="50" id="base-svc" oninput="calcP99()"><span class="out" id="base-svc-out">50</span></div>
+      <div class="row"><label>Worker threads (c)</label><input type="range" min="2" max="32" value="8" id="p99-workers" oninput="calcP99()"><span class="out" id="p99-workers-out">8</span></div>
+      <div class="row"><label>Service time std dev (%)</label><input type="range" min="5" max="80" value="30" id="sdev" oninput="calcP99()"><span class="out" id="sdev-out">30</span></div>
+    </div>
+    <div class="grid3" id="p99-metrics" style="margin-bottom:1rem"></div>
+    <div class="section">
+      <h3>p50 / p95 / p99 latency vs utilisasi (%)</h3>
+      <div class="chart-wrap"><canvas id="p99Chart" role="img" aria-label="Grafik p50 p95 p99 latency terhadap utilisasi thread pool">Grafik perbandingan latency.</canvas></div>
+      <div class="legend">
+        <span><span class="legend-dot" style="background:#1D9E75"></span>p50</span>
+        <span><span class="legend-dot" style="background:#EF9F27"></span>p95</span>
+        <span><span class="legend-dot" style="background:#E24B4A"></span>p99</span>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Breakdown pada utilisasi 85%</h3>
+      <div id="breakdown-85" style="font-size:13px; color:var(--color-text-secondary)"></div>
+    </div>
+  </div>
+
+  <!-- TAB WRR -->
+  <div id="tab-wrr" class="panel">
+    <div class="section">
+      <h3>Konfigurasi node</h3>
+      <p style="font-size:12px;color:var(--color-text-secondary);margin:0 0 12px">Edit CPU/RAM tiap node. Bobot WRR dihitung otomatis via normalized score.</p>
+      <table class="tbl">
+        <thead><tr><th>Node</th><th>CPU Cores</th><th>RAM (GB)</th><th>CPU score</th><th>RAM score</th><th>Bobot final</th><th>Status</th></tr></thead>
+        <tbody id="node-tbody"></tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button onclick="addNode()">+ Tambah node</button>
+        <button onclick="resetNodes()">Reset default</button>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Bobot CPU vs RAM (α)</h3>
+      <div class="row"><label>Bobot CPU (α)</label><input type="range" min="0" max="100" value="60" id="cpu-weight" oninput="onAlphaChange()"><span class="out" id="cpu-weight-out">60%</span></div>
+      <div class="row"><label>Bobot RAM (β = 1−α)</label><input type="range" min="0" max="100" value="40" id="ram-weight" disabled style="opacity:0.5"><span class="out" id="ram-weight-out">40%</span></div>
+    </div>
+    <div class="section">
+      <h3>Distribusi request per node</h3>
+      <div id="wrr-bars"></div>
+      <div class="chart-wrap2" style="margin-top:12px"><canvas id="wrrChart" role="img" aria-label="Distribusi request WRR per node">Chart WRR.</canvas></div>
+      <div class="legend" style="margin-top:8px" id="wrr-legend"></div>
+    </div>
+    <div class="section">
+      <h3>Detail kalkulasi bobot WRR</h3>
+      <table class="tbl" id="wrr-detail-tbl">
+        <thead><tr><th>Node</th><th>CPU</th><th>RAM</th><th>Score mentah</th><th>Bobot (W)</th><th>Req/1000</th><th>Effective RPS (dari 100)</th></tr></thead>
+        <tbody id="wrr-detail-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+let erlangChartInst, p99ChartInst, wrrChartInst;
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
+const tc = isDark ? '#a0a098' : '#5f5e5a';
+
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['erlang','p99','wrr'][i]===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+t).classList.add('active');
+  if(t==='erlang') calcErlang();
+  if(t==='p99') calcP99();
+  if(t==='wrr') calcWRR();
+}
+
+function factorial(n){ if(n<=1)return 1; let r=1; for(let i=2;i<=n;i++)r*=i; return r; }
+function erlangC(c,A){
+  if(A>=c)return 1;
+  let sum=0;
+  for(let k=0;k<c;k++) sum+=Math.pow(A,k)/factorial(k);
+  const last=(Math.pow(A,c)/factorial(c))*(c/(c-A));
+  return last/(sum+last);
+}
+function avgWait(c,A,mu){ const pw=erlangC(c,A); const rho=A/c; return pw/(c*mu*(1-rho)); }
+
+function calcErlang(){
+  const lam=+document.getElementById('lambda').value;
+  const mu=+document.getElementById('mu').value;
+  const c=+document.getElementById('workers').value;
+  document.getElementById('lambda-out').textContent=lam;
+  document.getElementById('mu-out').textContent=mu;
+  document.getElementById('workers-out').textContent=c;
+  const A=lam/mu, rho=A/c;
+  const pw=erlangC(c,A);
+  const Wq=rho<1?avgWait(c,A,mu)*1000:Infinity;
+  const sc=rho>=0.95?'danger':rho>=0.8?'warn':'ok';
+  const st=rho>=0.95?'Kritis':rho>=0.8?'Perlu perhatian':'Normal';
+  document.getElementById('erlang-metrics').innerHTML=`
+    <div class="metric"><div class="lbl">Traffic intensity (A)</div><div class="val">${A.toFixed(1)}</div><div class="sub">Erlang units</div></div>
+    <div class="metric"><div class="lbl">Utilisasi ρ</div><div class="val ${sc}">${(rho*100).toFixed(1)}%</div><div class="sub">${st}</div></div>
+    <div class="metric"><div class="lbl">P(harus tunggu)</div><div class="val ${pw>0.5?'danger':pw>0.2?'warn':'ok'}">${(pw*100).toFixed(1)}%</div><div class="sub">Erlang C</div></div>
+    <div class="metric"><div class="lbl">Avg wait time</div><div class="val">${rho<1?Wq.toFixed(1)+'ms':'∞'}</div><div class="sub">E[Wq]</div></div>`;
+  const utils=[],pwaits=[],avgwaits=[];
+  for(let u=0.05;u<=0.98;u+=0.02){
+    const Ai=u*c; const pwi=erlangC(c,Ai); const wi=avgWait(c,Ai,mu)*1000;
+    utils.push((u*100).toFixed(0)); pwaits.push(+(pwi*100).toFixed(2)); avgwaits.push(+wi.toFixed(2));
+  }
+  if(erlangChartInst)erlangChartInst.destroy();
+  const vlinePlugin={id:'vline',afterDraw(chart){
+    const idx=utils.indexOf('85'); if(idx<0)return;
+    const x=chart.scales.x.getPixelForValue(idx);
+    const ctx=chart.ctx; ctx.save();
+    ctx.beginPath(); ctx.moveTo(x,chart.chartArea.top); ctx.lineTo(x,chart.chartArea.bottom);
+    ctx.strokeStyle='rgba(239,159,39,0.85)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke();
+    ctx.fillStyle='rgba(239,159,39,0.9)'; ctx.font='11px sans-serif';
+    ctx.fillText('85% threshold',x+4,chart.chartArea.top+14); ctx.restore();
+  }};
+  erlangChartInst=new Chart(document.getElementById('erlangChart'),{
+    type:'line',plugins:[vlinePlugin],
+    data:{labels:utils,datasets:[
+      {label:'P(wait) %',data:pwaits,borderColor:'#E24B4A',backgroundColor:'rgba(226,75,74,0.08)',tension:.4,fill:true,borderWidth:2,pointRadius:0},
+      {label:'Avg wait (ms)',data:avgwaits,borderColor:'#378ADD',backgroundColor:'rgba(55,138,221,0.06)',tension:.4,fill:false,borderWidth:1.5,pointRadius:0,borderDash:[4,3],yAxisID:'y2'}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:gridColor},ticks:{color:tc,maxTicksLimit:12},title:{display:true,text:'Utilisasi (%)',color:tc,font:{size:11}}},
+        y:{grid:{color:gridColor},ticks:{color:tc},min:0,max:100,title:{display:true,text:'P(wait) %',color:tc,font:{size:11}}},
+        y2:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#378ADD'},title:{display:true,text:'Avg wait (ms)',color:'#378ADD',font:{size:11}}}
+      },interaction:{mode:'index',intersect:false}}
+  });
+}
+
+function calcP99(){
+  const baseSvc=+document.getElementById('base-svc').value;
+  const c=+document.getElementById('p99-workers').value;
+  const sdev=+document.getElementById('sdev').value/100;
+  document.getElementById('base-svc-out').textContent=baseSvc;
+  document.getElementById('p99-workers-out').textContent=c;
+  document.getElementById('sdev-out').textContent=(sdev*100).toFixed(0);
+  const mu=1000/baseSvc; const sigma=baseSvc*sdev;
+  function getP99(util){
+    const lam=util*c*mu; const A=lam/mu;
+    const pw=erlangC(c,A);
+    const Wq=util<0.99?avgWait(c,A,mu)*1000:baseSvc*10;
+    return{p50:baseSvc,p95:baseSvc+1.645*sigma+pw*Wq*0.8,p99:baseSvc+2.326*sigma+pw*Wq*1.5,pw,Wq};
+  }
+  const utils=[],p50s=[],p95s=[],p99s=[];
+  for(let u=0.1;u<=0.98;u+=0.02){
+    const {p50,p95,p99}=getP99(u);
+    utils.push((u*100).toFixed(0));p50s.push(+p50.toFixed(1));p95s.push(+p95.toFixed(1));p99s.push(+p99.toFixed(1));
+  }
+  const r85=getP99(0.85),r50=getP99(0.50);
+  document.getElementById('p99-metrics').innerHTML=`
+    <div class="metric"><div class="lbl">p50 @ 85% util</div><div class="val">${r85.p50.toFixed(0)}ms</div><div class="sub">median latency</div></div>
+    <div class="metric"><div class="lbl">p99 @ 85% util</div><div class="val warn">${r85.p99.toFixed(0)}ms</div><div class="sub">${((r85.p99/baseSvc-1)*100).toFixed(0)}% di atas base</div></div>
+    <div class="metric"><div class="lbl">Lonjakan p99 vs 50%</div><div class="val danger">${((r85.p99/r50.p99-1)*100).toFixed(0)}%</div><div class="sub">50% → 85% utilization</div></div>`;
+  if(p99ChartInst)p99ChartInst.destroy();
+  p99ChartInst=new Chart(document.getElementById('p99Chart'),{
+    type:'line',
+    data:{labels:utils,datasets:[
+      {label:'p50',data:p50s,borderColor:'#1D9E75',borderWidth:1.5,tension:.3,pointRadius:0,borderDash:[3,2]},
+      {label:'p95',data:p95s,borderColor:'#EF9F27',borderWidth:2,tension:.3,pointRadius:0},
+      {label:'p99',data:p99s,borderColor:'#E24B4A',borderWidth:2.5,tension:.3,pointRadius:0}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:gridColor},ticks:{color:tc,maxTicksLimit:10},title:{display:true,text:'Utilisasi thread pool (%)',color:tc,font:{size:11}}},
+        y:{grid:{color:gridColor},ticks:{color:tc},title:{display:true,text:'Latency (ms)',color:tc,font:{size:11}}}
+      },interaction:{mode:'index',intersect:false}}
+  });
+  document.getElementById('breakdown-85').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;">
+      <div>
+        <p style="font-weight:500;margin:0 0 8px;color:var(--color-text-primary)">Dekomposisi p99 @ ρ = 85%:</p>
+        <p>• Base service time: <strong>${baseSvc}ms</strong></p>
+        <p>• Variabilitas (2.326σ): <strong>+${(2.326*sigma).toFixed(0)}ms</strong></p>
+        <p>• Queue penalty: <strong>+${(r85.pw*r85.Wq*1.5).toFixed(0)}ms</strong></p>
+        <p style="border-top:0.5px solid var(--color-border-tertiary);padding-top:6px;margin-top:6px"><strong>Total p99: ${r85.p99.toFixed(0)}ms</strong></p>
+      </div>
+      <div>
+        <p style="font-weight:500;margin:0 0 8px;color:var(--color-text-primary)">Insight kritis:</p>
+        <p>• P(harus tunggu): <span style="color:var(--color-text-warning)">${(r85.pw*100).toFixed(1)}%</span> request</p>
+        <p>• Expected queue wait: <span style="color:var(--color-text-warning)">${r85.Wq.toFixed(1)}ms</span></p>
+        <p>• Di ρ=90%, P(wait): <span style="color:var(--color-text-danger)">${(erlangC(c,0.9*c)*100).toFixed(1)}%</span></p>
+        <p>• Rekomendasi provision: <strong>≤70%</strong> untuk burst headroom</p>
+      </div>
+    </div>`;
+}
+
+let nodes=[
+  {name:'Node A',cpu:16,ram:64,health:'ok'},
+  {name:'Node B',cpu:8, ram:32,health:'ok'},
+  {name:'Node C',cpu:32,ram:128,health:'ok'},
+];
+const nodeColors=['#378ADD','#1D9E75','#EF9F27','#E24B4A','#7F77DD','#D85A30'];
+function addNode(){ nodes.push({name:`Node ${String.fromCharCode(65+nodes.length)}`,cpu:8,ram:16,health:'ok'}); calcWRR(); }
+function removeNode(i){ nodes.splice(i,1); calcWRR(); }
+function resetNodes(){ nodes=[{name:'Node A',cpu:16,ram:64,health:'ok'},{name:'Node B',cpu:8,ram:32,health:'ok'},{name:'Node C',cpu:32,ram:128,health:'ok'}]; calcWRR(); }
+function onAlphaChange(){ document.getElementById('ram-weight').value=100-document.getElementById('cpu-weight').value; calcWRR(); }
+
+function calcWRR(){
+  const alpha=+document.getElementById('cpu-weight').value/100;
+  document.getElementById('cpu-weight-out').textContent=(alpha*100).toFixed(0)+'%';
+  document.getElementById('ram-weight-out').textContent=((1-alpha)*100).toFixed(0)+'%';
+  document.getElementById('ram-weight').value=Math.round((1-alpha)*100);
+  const maxCpu=Math.max(...nodes.map(n=>n.cpu));
+  const maxRam=Math.max(...nodes.map(n=>n.ram));
+  const scores=nodes.map(n=>alpha*(n.cpu/maxCpu)+(1-alpha)*(n.ram/maxRam));
+  const total=scores.reduce((a,b)=>a+b,0);
+  const weights=scores.map(s=>s/total);
+
+  // Render node table
+  document.getElementById('node-tbody').innerHTML=nodes.map((n,i)=>{
+    const cpuS=(n.cpu/maxCpu*100).toFixed(0);
+    const ramS=(n.ram/maxRam*100).toFixed(0);
+    const W=(weights[i]*100).toFixed(1);
+    return `<tr>
+      <td><input value="${n.name}" style="width:72px" onchange="nodes[${i}].name=this.value;calcWRR()"></td>
+      <td><input type="number" value="${n.cpu}" min="1" max="256" style="width:60px" onchange="nodes[${i}].cpu=+this.value;calcWRR()"></td>
+      <td><input type="number" value="${n.ram}" min="1" max="1024" style="width:60px" onchange="nodes[${i}].ram=+this.value;calcWRR()"></td>
+      <td style="font-size:12px;color:var(--color-text-secondary)">${cpuS}%</td>
+      <td style="font-size:12px;color:var(--color-text-secondary)">${ramS}%</td>
+      <td style="font-size:13px;font-weight:500">${W}%</td>
+      <td><span class="badge badge-${n.health==='ok'?'ok':'danger'}">${n.health==='ok'?'Aktif':'Down'}</span></td>
+    </tr>`;
+  }).join('');
+
+  // Bars
+  document.getElementById('wrr-bars').innerHTML=nodes.map((n,i)=>{
+    const pct=(weights[i]*100).toFixed(1);
+    return `<div class="node-row">
+      <span class="nname">${n.name}</span>
+      <div class="bar-wrap"><div class="bar" style="width:${pct}%;background:${nodeColors[i%nodeColors.length]}"></div></div>
+      <span class="nval">${pct}% — ${(weights[i]*100).toFixed(0)} req/100</span>
+    </div>`;
+  }).join('');
+
+  // WRR detail table
+  document.getElementById('wrr-detail-tbody').innerHTML=nodes.map((n,i)=>{
+    return `<tr>
+      <td style="font-weight:500">${n.name}</td>
+      <td>${n.cpu} cores</td><td>${n.ram} GB</td>
+      <td>${scores[i].toFixed(3)}</td>
+      <td><strong>${(weights[i]*100).toFixed(1)}%</strong></td>
+      <td>${Math.round(weights[i]*1000)}</td>
+      <td>${(weights[i]*100).toFixed(1)} rps</td>
+    </tr>`;
+  }).join('');
+
+  // WRR legend
+  document.getElementById('wrr-legend').innerHTML=nodes.map((n,i)=>`<span><span class="legend-dot" style="background:${nodeColors[i%nodeColors.length]}"></span>${n.name}</span>`).join('');
+
+  if(wrrChartInst)wrrChartInst.destroy();
+  wrrChartInst=new Chart(document.getElementById('wrrChart'),{
+    type:'bar',
+    data:{
+      labels:nodes.map(n=>n.name),
+      datasets:[
+        {label:'CPU score',data:nodes.map(n=>(n.cpu/maxCpu*100).toFixed(1)),backgroundColor:nodeColors.map(c=>c+'55'),borderColor:nodeColors,borderWidth:1.5,borderRadius:4},
+        {label:'RAM score',data:nodes.map(n=>(n.ram/maxRam*100).toFixed(1)),backgroundColor:nodeColors.map(c=>c+'22'),borderColor:nodeColors.map(c=>c+'88'),borderWidth:1,borderRadius:4}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:gridColor},ticks:{color:tc}},
+        y:{grid:{color:gridColor},ticks:{color:tc},max:110,title:{display:true,text:'Score (normalized %)',color:tc,font:{size:11}}}
+      }}
+  });
+}
+
+// Init
+calcErlang();
+calcP99();
+calcWRR();
+</script>
+</body>
+</html>
